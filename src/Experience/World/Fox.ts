@@ -10,17 +10,15 @@ export default class Fox extends kokomi.Component {
   declare base: Experience;
   resource: STDLIB.GLTF;
   model: THREE.Group;
-  animation: Partial<{
-    mixer: THREE.AnimationMixer;
-    actions: Record<string, THREE.AnimationAction>;
-    play: Function;
-  }>;
+  animations: kokomi.AnimationManager;
+  currentAction: THREE.AnimationAction | null;
   debug: Debug;
   debugFolder: dat.GUI | null;
   constructor(base: Experience) {
     super(base);
 
     this.resource = this.base.assetManager.items["foxModel"];
+
     this.model = this.resource.scene;
     this.model.scale.setScalar(0.02);
     this.model.traverse((child) => {
@@ -29,7 +27,12 @@ export default class Fox extends kokomi.Component {
       }
     });
 
-    this.animation = {};
+    this.animations = new kokomi.AnimationManager(
+      this.base,
+      this.resource.animations,
+      this.resource.scene
+    );
+    this.currentAction = null;
 
     this.debug = this.base.debug;
     this.debugFolder = null;
@@ -44,58 +47,26 @@ export default class Fox extends kokomi.Component {
   addExisting(): void {
     this.base.scene.add(this.model);
   }
-  update(time: number): void {
-    this.animation.mixer?.update(this.base.clock.deltaTime);
+  playAction(name: string) {
+    if (this.currentAction) {
+      this.currentAction.fadeOut(0.5);
+    }
+    const action = this.animations.actions[name];
+    action.reset().fadeIn(0.5).play();
+    this.currentAction = action;
   }
   setAnimation() {
-    this.animation.mixer = new THREE.AnimationMixer(this.model);
-    this.animation.actions = {};
-    this.animation.actions.idle = this.animation.mixer.clipAction(
-      this.resource.animations[0]
-    );
-    this.animation.actions.walking = this.animation.mixer.clipAction(
-      this.resource.animations[1]
-    );
-    this.animation.actions.running = this.animation.mixer.clipAction(
-      this.resource.animations[2]
-    );
-
-    this.animation.actions.current = this.animation.actions.idle;
-    this.animation.actions.current.play();
-
-    this.animation.play = (name: string) => {
-      if (this.animation.actions) {
-        const newAction = this.animation.actions[name];
-        const oldAction = this.animation.actions.current;
-
-        if (oldAction) {
-          newAction.reset();
-          newAction.play();
-          newAction.crossFadeFrom(oldAction, 1, false);
-
-          this.animation.actions.current = newAction;
-        }
-      }
-    };
+    this.playAction("Survey");
 
     if (this.debug.active) {
-      const debugObject = {
-        playIdle: () => {
-          if (this.animation.play) {
-            this.animation.play("idle");
-          }
-        },
-        playWalking: () => {
-          if (this.animation.play) {
-            this.animation.play("walking");
-          }
-        },
-        playRunning: () => {
-          if (this.animation.play) {
-            this.animation.play("running");
-          }
-        },
-      };
+      const debugObject = Object.fromEntries(
+        this.animations.names.map((item) => [
+          item,
+          () => {
+            this.playAction(item);
+          },
+        ])
+      );
       Object.keys(debugObject).forEach((key) => {
         this.debugFolder?.add(debugObject, key);
       });
